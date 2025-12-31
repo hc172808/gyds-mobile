@@ -4,14 +4,37 @@ import (
 	"encoding/json"
 	"fmt"
 	"gyds-mobile/core"
+	"io/ioutil"
 	"log"
 	"os/exec"
-	"strconv"
 	"time"
 )
 
+type MinerConfig struct {
+	MiningIntervalSeconds int `json:"mining_interval_seconds"`
+	MiningDifficulty      int `json:"mining_difficulty"`
+}
+
+func LoadConfig(path string) MinerConfig {
+	cfg := MinerConfig{
+		MiningIntervalSeconds: 5,
+		MiningDifficulty:      1,
+	}
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Println("⚠️ Config not found, using defaults")
+		return cfg
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Println("⚠️ Invalid config, using defaults")
+		return cfg
+	}
+	return cfg
+}
+
 func Start(chain *core.LightChain) {
-	fmt.Println("⛏️ Mobile CPU miner started (battery-aware)")
+	fmt.Println("⛏️ Mobile CPU miner started (battery-aware, configurable)")
+	cfg := LoadConfig("config.json")
 
 	for {
 		batteryLevel := getBatteryLevel()
@@ -28,6 +51,9 @@ func Start(chain *core.LightChain) {
 			index = latest.Index + 1
 		}
 
+		// Simulate difficulty by sleeping longer for higher difficulty
+		time.Sleep(time.Duration(cfg.MiningDifficulty) * time.Second)
+
 		block := &core.Block{
 			Index:     index,
 			PrevHash:  "",
@@ -37,11 +63,11 @@ func Start(chain *core.LightChain) {
 		}
 		chain.AddBlock(block)
 
-		time.Sleep(5 * time.Second) // adjustable mining interval
+		time.Sleep(time.Duration(cfg.MiningIntervalSeconds) * time.Second)
 	}
 }
 
-// getBatteryLevel returns battery percentage or -1 if unavailable
+// getBatteryLevel() remains the same as before
 func getBatteryLevel() int {
 	out, err := exec.Command("termux-battery-status").Output()
 	if err != nil {
@@ -58,9 +84,8 @@ func getBatteryLevel() int {
 		return -1
 	}
 
-	// If charging, allow mining even if battery < 20%
 	if data.Plugged {
-		return int(data.Percentage + 100) // return >20 to allow mining
+		return int(data.Percentage + 100)
 	}
 
 	return int(data.Percentage)
